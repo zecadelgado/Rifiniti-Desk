@@ -48,13 +48,13 @@
     "configuracao_padrao": {
       "host": "localhost",
       "usuario_mysql": "root",
-      "senha_mysql_padrao_no_codigo": "M@nu2425",
+      "senha_mysql_padrao_no_codigo": "SUA SENHAAA",
       "database": "patrimonio_ideau_v2"
     },
     "variaveis_de_ambiente_suportadas": {
       "DB_HOST": "Host do MySQL. Padrao: localhost",
       "DB_USER": "Usuario do MySQL. Padrao: root",
-      "DB_PASSWORD": "Senha do usuario MySQL. Padrao atual no codigo: M@nu2425",
+      "DB_PASSWORD": "Senha do usuario MySQL. Padrao atual no codigo: SUA SENHAAA",
       "DB_NAME": "Nome do banco do sistema. Padrao: patrimonio_ideau_v2"
     },
     "preparar_banco": [
