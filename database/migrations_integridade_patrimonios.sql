@@ -6,7 +6,7 @@
 -- ========================================================================
 
 -- Defina o schema alvo a partir do database ativo ou, como fallback seguro,
--- pelo nome configurado na aplicação (backend/config_db.py).
+-- pelo nome configurado na aplicacao (backend/database/config_db.py).
 SET @schema := IFNULL(NULLIF(DATABASE(), ''), 'patrimonio_ideau');
 SELECT CONCAT('Usando schema: ', @schema) AS info;
 

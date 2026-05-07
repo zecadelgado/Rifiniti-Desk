@@ -1,0 +1,163 @@
+{
+  "projeto": {
+    "nome": "Rifiniti-Desk / NeoBenesys",
+    "tipo": "Aplicativo desktop Python com PySide6 e MySQL",
+    "arquivo_principal": "main.py",
+    "descricao": "Sistema desktop para gestao de patrimonio, usuarios, fornecedores, centros de custo, setores/locais, notas fiscais, movimentacoes, manutencoes, depreciacao, auditoria, anexos e relatorios."
+  },
+  "requisitos_do_sistema": {
+    "sistema_operacional_recomendado": "Windows 10 ou Windows 11",
+    "python": {
+      "versao_recomendada": "Python 3.11 ou superior",
+      "instalacao": "Instale pelo site oficial python.org e marque a opcao Add Python to PATH durante a instalacao.",
+      "verificar_instalacao": [
+        "py --version",
+        "python --version"
+      ],
+      "observacao": "No Windows, normalmente o comando py funciona quando o Python Launcher esta instalado."
+    },
+    "mysql": {
+      "versao_recomendada": "MySQL Server 8.0 ou superior",
+      "servico_windows": "MySQL80",
+      "verificar_servico": "Get-Service MySQL80",
+      "iniciar_servico": "Start-Service MySQL80",
+      "observacao": "O MySQL precisa estar rodando antes de preparar ou executar o sistema."
+    }
+  },
+  "dependencias_python": {
+    "arquivo": "requirements.txt",
+    "bibliotecas": [
+      "PySide6",
+      "mysql-connector-python",
+      "openpyxl",
+      "bcrypt>=4.0.1"
+    ],
+    "instalacao_manual": [
+      "py -3 -m venv .venv",
+      ".\\.venv\\Scripts\\python.exe -m pip install --upgrade pip",
+      ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt"
+    ]
+  },
+  "banco_de_dados": {
+    "tipo": "MySQL",
+    "arquivo_sql_principal": "database/data.sql",
+    "banco_padrao": "patrimonio_ideau_v2",
+    "script_de_preparo": "scripts/setup_database.py",
+    "camada_de_compatibilidade": "backend/database/db_compat.py",
+    "explicacao": "O arquivo database/data.sql cria o banco novo. O arquivo backend/database/db_compat.py ajusta automaticamente nomes de tabelas e colunas para manter compatibilidade com o codigo atual.",
+    "configuracao_padrao": {
+      "host": "localhost",
+      "usuario_mysql": "root",
+      "senha_mysql_padrao_no_codigo": "M@nu2425",
+      "database": "patrimonio_ideau_v2"
+    },
+    "variaveis_de_ambiente_suportadas": {
+      "DB_HOST": "Host do MySQL. Padrao: localhost",
+      "DB_USER": "Usuario do MySQL. Padrao: root",
+      "DB_PASSWORD": "Senha do usuario MySQL. Padrao atual no codigo: M@nu2425",
+      "DB_NAME": "Nome do banco do sistema. Padrao: patrimonio_ideau_v2"
+    },
+    "preparar_banco": [
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py"
+    ],
+    "recriar_banco_do_zero": [
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py --reset"
+    ],
+    "observacao_importante": "O comando --reset apaga e recria o banco configurado em DB_NAME. Use apenas quando puder perder os dados atuais."
+  },
+  "usuario_inicial_do_sistema": {
+    "quando_e_criado": "Criado automaticamente somente se a tabela usuarios estiver vazia.",
+    "arquivo_responsavel": "backend/database/db_compat.py",
+    "perfil": "master",
+    "email": "admin@ideau.local",
+    "senha": "Admin@123",
+    "recomendacao": "Depois do primeiro login, crie usuarios reais e troque/remova essa credencial inicial em ambientes compartilhados."
+  },
+  "tutorial_rapido_windows": {
+    "passo_1_instalar_requisitos": [
+      "Instale Python 3.11 ou superior.",
+      "Instale MySQL Server 8.0 ou superior.",
+      "Confirme que o servico MySQL esta rodando."
+    ],
+    "passo_2_abrir_terminal": [
+      "Abra o PowerShell.",
+      "Entre na pasta do projeto: cd C:\\src\\Patrimonio_Ideau\\Rifiniti-Desk"
+    ],
+    "passo_3_configurar_senha_do_mysql_se_precisar": [
+      "$env:DB_PASSWORD=\"sua_senha_do_mysql\"",
+      "$env:DB_USER=\"root\"",
+      "$env:DB_NAME=\"patrimonio_ideau_v2\""
+    ],
+    "passo_4_rodar_setup_automatico": [
+      ".\\scripts\\setup.ps1"
+    ],
+    "passo_5_executar_sistema": [
+      ".\\.venv\\Scripts\\python.exe main.py"
+    ],
+    "passo_6_fazer_login": [
+      "Email: admin@ideau.local",
+      "Senha: Admin@123"
+    ]
+  },
+  "tutorial_manual_sem_setup_ps1": {
+    "comandos": [
+      "cd C:\\src\\Patrimonio_Ideau\\Rifiniti-Desk",
+      "py -3 -m venv .venv",
+      ".\\.venv\\Scripts\\python.exe -m pip install --upgrade pip",
+      ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py",
+      ".\\.venv\\Scripts\\python.exe main.py"
+    ]
+  },
+  "testes_e_diagnostico": {
+    "testar_conexao": ".\\.venv\\Scripts\\python.exe .\\scripts\\test_connection.py",
+    "erros_comuns": [
+      {
+        "erro": "1045 Access denied for user 'root'@'localhost'",
+        "causa": "Senha ou usuario do MySQL incorretos.",
+        "solucao": "Defina a senha correta com $env:DB_PASSWORD=\"sua_senha\" antes de rodar o sistema, ou ajuste backend/database/config_db.py."
+      },
+      {
+        "erro": "1049 Unknown database 'patrimonio_ideau_v2'",
+        "causa": "Banco ainda nao foi criado.",
+        "solucao": "Rode .\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py. A main.py tambem tenta criar automaticamente usando database/data.sql."
+      },
+      {
+        "erro": "python nao reconhecido ou No installed Python found",
+        "causa": "Python nao instalado ou nao esta no PATH.",
+        "solucao": "Instale Python 3.11+ e marque Add Python to PATH. Depois reabra o PowerShell."
+      },
+      {
+        "erro": "Can't connect to MySQL server",
+        "causa": "MySQL parado ou host/porta incorretos.",
+        "solucao": "Verifique o servico MySQL80 com Get-Service MySQL80 e inicie com Start-Service MySQL80."
+      }
+    ]
+  },
+  "arquivos_importantes": {
+    "main.py": "Arquivo principal para abrir o aplicativo.",
+    "requirements.txt": "Lista de bibliotecas Python.",
+    "scripts/setup.ps1": "Setup automatico no Windows: cria venv, instala dependencias e prepara banco.",
+    "scripts/setup_database.py": "Importa database/data.sql e aplica compatibilidade.",
+    "database/data.sql": "Banco de dados novo do projeto.",
+    "frontend/ui/": "Arquivos .ui carregados pela main.py.",
+    "frontend/images/": "Imagens e logos usados pela interface.",
+    "frontend/resources/": "Recursos Qt e resources_rc.py importado pela aplicacao.",
+    "frontend/styles/theme.qss": "Tema visual global da aplicacao.",
+    "backend/controllers/": "Controllers das telas e fluxos do sistema.",
+    "backend/database/config_db.py": "Configuracao de conexao com MySQL.",
+    "backend/database/database_manager.py": "Camada principal de acesso ao banco.",
+    "backend/database/db_compat.py": "Ajustes automaticos do schema e usuario master inicial.",
+    "backend/services/": "Servicos auxiliares, cache, auditoria, importacao e logs.",
+    "backend/utils/": "Validadores, dialogs e utilitarios compartilhados.",
+    "scripts/test_connection.py": "Teste de conexao e diagnostico do banco.",
+    "docs/PROJECT_SETUP.json": "Documentacao de instalacao e execucao.",
+    "templates/template_importacao_patrimonios.xlsx": "Template de importacao de patrimonios."
+  },
+  "observacoes_para_compartilhar": [
+    "Compartilhe o projeto inteiro, incluindo database/data.sql, scripts/setup.ps1, scripts/setup_database.py e requirements.txt.",
+    "Cada computador precisa ter Python e MySQL instalados.",
+    "A senha do MySQL pode variar por computador; use DB_PASSWORD para configurar sem editar codigo.",
+    "O usuario inicial do sistema e apenas para primeiro acesso."
+  ]
+}

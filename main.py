@@ -1,6 +1,5 @@
 
 import sys
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -17,25 +16,28 @@ from PySide6.QtWidgets import (
 from PySide6.QtUiTools import QUiLoader
 from PySide6.QtCore import QFile, QFileInfo, QTimer, QDate, QDateTime
 from PySide6.QtGui import QBrush, QColor, QFont, QTextCharFormat
-from frontend import resources_rc
+from frontend.resources import resources_rc
 
-                                                             
-sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+from backend.database.database_manager import DatabaseManager
+from backend.utils.validators import validar_email, validar_senha
+from backend.controllers.anexos_controller import AnexosController
+from backend.controllers.auditoria_controller import AuditoriaController
+from backend.controllers.centro_custo import CentroCustoController
+from backend.controllers.depreciassao import DepreciacaoController
+from backend.controllers.fornecedores import FornecedoresController
+from backend.controllers.manutencao_controller import ManutencaoController
+from backend.controllers.movimentacoes_controller import MovimentacoesController
+from backend.controllers.Notas import NotasFiscaisController
+from backend.controllers.patrimonio_controller import PatrimonioController
+from backend.controllers.relatorios_controller import RelatoriosController
+from backend.controllers.setores_locais_controller import SetoresLocaisController
+from backend.controllers.usuarios_controller import UsuariosController
 
-from database_manager import DatabaseManager
-from validators import validar_email, validar_senha
-from anexos_controller import AnexosController
-from auditoria_controller import AuditoriaController
-from centro_custo import CentroCustoController
-from depreciassao import DepreciacaoController
-from fornecedores import FornecedoresController
-from manutencao_controller import ManutencaoController
-from movimentacoes_controller import MovimentacoesController
-from Notas import NotasFiscaisController
-from patrimonio_controller import PatrimonioController
-from relatorios_controller import RelatoriosController
-from setores_locais_controller import SetoresLocaisController
-from usuarios_controller import UsuariosController
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+FRONTEND_DIR = PROJECT_ROOT / "frontend"
+UI_DIR = FRONTEND_DIR / "ui"
+STYLE_DIR = FRONTEND_DIR / "styles"
 
 
 def create_controller(key, widget, db_manager, current_user=None):
@@ -68,7 +70,7 @@ def create_controller(key, widget, db_manager, current_user=None):
 
 def load_ui(file_name: str):
                                                             
-    ui_file_path = Path(__file__).resolve().parent / 'frontend' / file_name
+    ui_file_path = UI_DIR / file_name
     loader = QUiLoader()
     loader.setWorkingDirectory(QFileInfo(str(ui_file_path)).dir())
     ui_file = QFile(str(ui_file_path))
@@ -83,7 +85,7 @@ def load_ui(file_name: str):
 
 def load_global_theme():
     """Return the shared NeoBeneSys stylesheet content if available."""
-    theme_path = Path(__file__).resolve().parent / "frontend" / "theme.qss"
+    theme_path = STYLE_DIR / "theme.qss"
     if not theme_path.exists():
         return ""
     try:

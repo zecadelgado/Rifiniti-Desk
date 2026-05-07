@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="utf-8"?><ui version="4.0">
+  <class>PatrimonioWindow</class>
+  <widget class="QWidget" name="PatrimonioWindow">
+    <property name="geometry">
+      <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>1200</width>
+        <height>750</height>
+      </rect>
+    </property>
+    <property name="windowTitle">
+      <string>Patrimônio</string>
+    </property>
+    <layout class="QVBoxLayout" name="verticalLayout">
+      <property name="spacing">
+        <number>20</number>
+      </property>
+      <property name="leftMargin">
+        <number>24</number>
+      </property>
+      <property name="topMargin">
+        <number>24</number>
+      </property>
+      <property name="rightMargin">
+        <number>24</number>
+      </property>
+      <property name="bottomMargin">
+        <number>24</number>
+      </property>
+      <item>
+        <widget class="QLabel" name="lbl_title">
+          <property name="text">
+            <string>Patrimônio</string>
+          </property>
+          <property name="alignment">
+            <set>Qt::AlignmentFlag::AlignLeft | Qt::AlignmentFlag::AlignVCenter</set>
+          </property>
+        </widget>
+      </item>
+      <item>
+        <layout class="QHBoxLayout" name="filtersLayout">
+          <property name="stretch">
+            <string>3,1,1,1,0,0</string>
+          </property>
+          <item>
+            <widget class="QLineEdit" name="le_busca">
+              <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                </sizepolicy>
+              </property>
+              <property name="placeholderText">
+                <string>Buscar por tombamento/descrição/série...</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QComboBox" name="cb_categoria">
+              <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                </sizepolicy>
+              </property>
+              <property name="placeholderText">
+                <string>Categoria</string>
+              </property>
+              <item>
+                <property name="text">
+                  <string>Eletronico</string>
+                </property>
+              </item>
+              <item>
+                <property name="text">
+                  <string>Imobilizado</string>
+                </property>
+              </item>
+              <item>
+                <property name="text">
+                  <string>Movel</string>
+                </property>
+              </item>
+              <item>
+                <property name="text">
+                  <string>Utilitarios</string>
+                </property>
+              </item>
+            </widget>
+          </item>
+          <item>
+            <widget class="QComboBox" name="cb_setor">
+              <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                </sizepolicy>
+              </property>
+              <property name="placeholderText">
+                <string>Setor</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QComboBox" name="cb_status">
+              <property name="sizePolicy">
+                <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+                  <horstretch>0</horstretch>
+                  <verstretch>0</verstretch>
+                </sizepolicy>
+              </property>
+              <property name="placeholderText">
+                <string>Status</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_filtrar">
+              <property name="text">
+                <string>Filtrar</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_limpar">
+              <property name="text">
+                <string>Limpar</string>
+              </property>
+            </widget>
+          </item>
+        </layout>
+      </item>
+      <item>
+        <widget class="QTableWidget" name="tbl_patrimonio">
+          <property name="editTriggers">
+            <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+          </property>
+          <property name="selectionBehavior">
+            <enum>QAbstractItemView::SelectionBehavior::SelectRows</enum>
+          </property>
+          <property name="rowCount">
+            <number>0</number>
+          </property>
+          <property name="columnCount">
+            <number>10</number>
+          </property>
+          <column>
+            <property name="text">
+              <string>Tombamento</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Descrição</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Categoria</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Série</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Aquisição</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Valor</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Centro Custo</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Setor</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Local</string>
+            </property>
+          </column>
+          <column>
+            <property name="text">
+              <string>Status</string>
+            </property>
+          </column>
+          <attribute name="horizontalHeaderStretchLastSection">
+            <bool>true</bool>
+          </attribute>
+          <attribute name="verticalHeaderVisible">
+            <bool>false</bool>
+          </attribute>
+        </widget>
+      </item>
+      <item>
+        <layout class="QHBoxLayout" name="actionsLayout">
+          <item>
+            <widget class="QPushButton" name="btn_novo">
+              <property name="text">
+                <string>Novo</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_editar">
+              <property name="text">
+                <string>Editar</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_excluir">
+              <property name="text">
+                <string>Excluir</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_importar">
+              <property name="text">
+                <string>Importar em Massa</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <spacer name="hspacer">
+              <property name="orientation">
+                <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+                <size>
+                  <width>40</width>
+                  <height>20</height>
+                </size>
+              </property>
+            </spacer>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_salvar">
+              <property name="text">
+                <string>Salvar</string>
+              </property>
+            </widget>
+          </item>
+          <item>
+            <widget class="QPushButton" name="btn_cancelar">
+              <property name="text">
+                <string>Cancelar</string>
+              </property>
+            </widget>
+          </item>
+        </layout>
+      </item>
+    </layout>
+  </widget>
+  <resources/>
+  <connections/>
+</ui>
