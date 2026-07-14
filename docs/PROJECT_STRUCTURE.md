@@ -7,7 +7,7 @@ Este projeto foi organizado por responsabilidade:
 - `frontend/resources/`: recursos Qt compilados e arquivo `.qrc`.
 - `frontend/styles/`: tema visual `.qss`.
 - `backend/controllers/`: controllers das telas e fluxos de interface.
-- `backend/database/`: conexao MySQL, gerenciador de dados e compatibilidade do schema.
+- `backend/database/`: conexao PostgreSQL, gerenciador de dados e compatibilidade do schema.
 - `backend/services/`: servicos auxiliares como auditoria, cache, importacao e logs.
 - `backend/utils/`: validadores, dialogs e utilitarios compartilhados.
 - `database/`: scripts SQL, schema, migracoes e modelo do banco.

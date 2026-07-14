@@ -3,8 +3,8 @@ from __future__ import annotations
 import datetime
 from typing import Dict, Optional
 
-import mysql.connector
 from PySide6.QtCore import QDate
+from backend.database.postgres_driver import DatabaseError
 from backend.utils.validators import validar_numero_nota_fiscal, validar_ncm, validar_cfop
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices, QStandardItemModel, QStandardItem
@@ -100,19 +100,27 @@ class NotasFiscaisController:
         try:
             conn = self.db_manager.connection
             cur = conn.cursor()
-            cur.execute("SHOW COLUMNS FROM fornecedores")
+            cur.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("fornecedores",),
+            )
             cols = [row[0] for row in cur.fetchall()]
             id_candidates = ["id_fornecedor", "id", "fornecedor_id", "cod_fornecedor", "codigo", "idFornecedor"]
             name_candidates = ["nome", "razao_social", "fantasia", "descricao", "nome_fornecedor", "empresa", "razaosocial", "nm_fornecedor"]
             id_col = next((c for c in id_candidates if c in cols), None)
             name_col = next((c for c in name_candidates if c in cols), None)
             if not id_col or not name_col:
-                raise mysql.connector.Error(msg=f"Não encontrei colunas de id/nome em 'fornecedores'. Colunas: {', '.join(cols)}")
-            sql = f"SELECT `{id_col}`, `{name_col}` FROM fornecedores ORDER BY `{name_col}`"
+                raise DatabaseError(f"Nao encontrei colunas de id/nome em 'fornecedores'. Colunas: {', '.join(cols)}")
+            sql = f"SELECT \"{id_col}\", \"{name_col}\" FROM fornecedores ORDER BY \"{name_col}\""
             cur.execute(sql)
             for id_val, name_val in cur.fetchall():
                 cmb.addItem(str(name_val), id_val)
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.warning(w, "Fornecedores", f"Não foi possível carregar fornecedores.\n{err}")
             return
         self._select_combo_by_data(cmb, current_value)
@@ -128,9 +136,17 @@ class NotasFiscaisController:
         try:
             conn = self.db_manager.connection
             cursor = conn.cursor()
-            cursor.execute("SHOW COLUMNS FROM notas_fiscais")
+            cursor.execute(
+                """
+                SELECT column_name, data_type, is_nullable, NULL, column_default, NULL
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("notas_fiscais",),
+            )
             rows = cursor.fetchall()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             self._cmb_centro_custo.setEnabled(False)
             self._cmb_centro_custo.setToolTip(f"Nao foi possivel ler as colunas de notas_fiscais.\n{err}")
             return
@@ -177,7 +193,15 @@ class NotasFiscaisController:
         try:
             conn = self.db_manager.connection
             cursor = conn.cursor()
-            cursor.execute("SHOW COLUMNS FROM centro_custo")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("centro_custo",),
+            )
             cols = [row[0] for row in cursor.fetchall()]
             id_candidates = ["id_centro_custo", "id", "centro_custo_id", "idCentroCusto"]
             name_candidates = ["nome_centro", "nome", "descricao", "titulo"]
@@ -187,15 +211,15 @@ class NotasFiscaisController:
             name_col = next((c for c in name_candidates if c in cols), None)
             code_col = next((c for c in code_candidates if c in cols), None)
             if not id_col or not name_col:
-                raise mysql.connector.Error(msg=f"Nao encontrei colunas de id/nome em 'centro_custo'. Colunas: {', '.join(cols)}")
-            select_cols = [f"`{id_col}`", f"`{name_col}`"]
+                raise DatabaseError(f"Nao encontrei colunas de id/nome em 'centro_custo'. Colunas: {', '.join(cols)}")
+            select_cols = [f'"{id_col}"', f'"{name_col}"']
             if code_col:
-                select_cols.append(f"`{code_col}`")
-            where_clause = " WHERE `ativo` = 1" if has_ativo else ""
-            sql = f"SELECT {', '.join(select_cols)} FROM centro_custo{where_clause} ORDER BY `{name_col}`"
+                select_cols.append(f'"{code_col}"')
+            where_clause = ' WHERE "ativo" = 1' if has_ativo else ""
+            sql = f"SELECT {', '.join(select_cols)} FROM centro_custo{where_clause} ORDER BY \"{name_col}\""
             cursor.execute(sql)
             rows = cursor.fetchall()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.warning(self.widget, "Centro de Custo", f"Nao foi possivel carregar centros de custo.\n{err}")
             return
         finally:
@@ -372,7 +396,7 @@ class NotasFiscaisController:
             conn = self.db_manager.connection
             cur = conn.cursor()
             if self.current_invoice_id is None:
-                col_identifiers = ", ".join(f"`{col}`" for col in columns)
+                col_identifiers = ", ".join(f'"{col}"' for col in columns)
                 placeholders = ", ".join(["%s"] * len(values))
                 sql = f"INSERT INTO notas_fiscais ({col_identifiers}) VALUES ({placeholders})"
                 cur.execute(sql, tuple(values))
@@ -380,14 +404,14 @@ class NotasFiscaisController:
                 self.current_invoice_id = cur.lastrowid
                 QMessageBox.information(w, "Sucesso", f"Nota {numero} criada (ID {self.current_invoice_id}).")
             else:
-                assignments = ", ".join(f"`{col}`=%s" for col in columns)
+                assignments = ", ".join(f'"{col}"=%s' for col in columns)
                 params = list(values)
                 params.append(self.current_invoice_id)
                 sql = f"UPDATE notas_fiscais SET {assignments} WHERE id_nota_fiscal=%s"
                 cur.execute(sql, tuple(params))
                 conn.commit()
                 QMessageBox.information(w, "Sucesso", f"Nota {numero} atualizada.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(w, "Erro ao salvar", f"Banco: {err}")
             return
         self._set_buttons_state()
@@ -410,11 +434,11 @@ class NotasFiscaisController:
                 "caminho_arquivo_nf",
             ]
             if centro_col:
-                select_cols.append(f"`{centro_col}`")
+                select_cols.append(f'"{centro_col}"')
             sql = f"SELECT {', '.join(select_cols)} FROM notas_fiscais WHERE numero_nota = %s"
             cur.execute(sql, (termo_str,))
             row = cur.fetchone()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(w, "Erro na busca", f"Banco: {err}")
             return
         if not row:
@@ -457,7 +481,7 @@ class NotasFiscaisController:
             cur.execute("DELETE FROM itens_nota_fiscal WHERE id_nota_fiscal = %s", (self.current_invoice_id,))
             cur.execute("DELETE FROM notas_fiscais WHERE id_nota_fiscal = %s", (self.current_invoice_id,))
             conn.commit()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(w, "Erro ao excluir", f"Banco: {err}")
             return
         self._new_invoice()
@@ -485,7 +509,7 @@ class NotasFiscaisController:
             self.db_manager.connection.commit()
             w.findChild(QLineEdit, "txt_anexo").setText(path)
             QMessageBox.information(w, "Documento", "Documento anexado com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(w, "Erro ao anexar", f"Banco: {err}")
 
     def _view_document(self):
@@ -514,7 +538,7 @@ class NotasFiscaisController:
                 (id_nota,),
             )
             rows = cur.fetchall()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Itens", f"Erro ao carregar itens: {err}")
             return
         for r in rows:
@@ -582,7 +606,7 @@ class NotasFiscaisController:
             self.itens_model.removeRow(row)
             self.editing_item_id = None
             self._recalc_total_from_items()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Itens", f"Erro ao excluir item: {err}")
 
     def _save_item(self):
@@ -655,7 +679,7 @@ class NotasFiscaisController:
                 QMessageBox.information(self.widget, "Itens", "Item atualizado com sucesso.")
             self._recalc_total_from_items()
             self._clear_item_fields()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Itens", f"Erro ao salvar item: {err}")
 
     def refresh(self):

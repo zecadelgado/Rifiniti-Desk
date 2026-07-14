@@ -108,7 +108,14 @@ class PatrimonioController(QWidget):
 
     def _check_valor_atual_column(self) -> bool:
         try:
-            result = self.db_manager.fetch_one("SHOW COLUMNS FROM patrimonios LIKE %s", ("valor_atual",))
+            result = self.db_manager.fetch_one(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'patrimonios' AND column_name = %s
+                """,
+                ("valor_atual",),
+            )
             return bool(result)
         except Exception as exc:                                              
             print(f"[PatrimonioController] Falha ao verificar coluna valor_atual: {exc}")

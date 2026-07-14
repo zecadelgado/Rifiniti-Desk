@@ -281,7 +281,13 @@ class QuickCreateNotaFiscalDialog(QDialog):
         cursor = None
         try:
             cursor = self.db_manager.connection.cursor()
-            cursor.execute("SHOW COLUMNS FROM notas_fiscais LIKE 'id_centro_custo'")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'notas_fiscais' AND column_name = 'id_centro_custo'
+                """
+            )
             row = cursor.fetchone()
             if row and len(row) >= 3:
                 nullable = row[2]

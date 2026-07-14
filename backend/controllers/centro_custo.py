@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-import mysql.connector
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from backend.database.database_manager import DatabaseManager
+from backend.database.postgres_driver import DatabaseError
 
 
 @dataclass
@@ -77,9 +77,17 @@ class CentroCustoController:
         try:
             conn = self._ensure_connection()
             cursor = conn.cursor()
-            cursor.execute("SHOW COLUMNS FROM centro_custo")
+            cursor.execute(
+                """
+                SELECT column_name, data_type, is_nullable, NULL, column_default, NULL
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("centro_custo",),
+            )
             rows = cursor.fetchall()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Centro de Custo", f"Não foi possível ler as colunas de centro_custo.\n{err}")
             return
         finally:
@@ -216,7 +224,7 @@ class CentroCustoController:
             conn = self._ensure_connection()
             cursor = conn.cursor()
             if self.current_id is None:
-                columns_fragment = ", ".join(f"`{col}`" for col in payload.keys())
+                columns_fragment = ", ".join(f'"{col}"' for col in payload.keys())
                 placeholders = ", ".join(["%s"] * len(payload))
                 sql = f"INSERT INTO centro_custo ({columns_fragment}) VALUES ({placeholders})"
                 cursor.execute(sql, tuple(payload.values()))
@@ -224,14 +232,14 @@ class CentroCustoController:
                 self.current_id = cursor.lastrowid
                 QMessageBox.information(self.widget, "Centro de Custo", "Centro de custo cadastrado com sucesso.")
             else:
-                set_fragment = ", ".join(f"`{col}` = %s" for col in payload.keys())
-                sql = f"UPDATE centro_custo SET {set_fragment} WHERE `{self._columns['id']}` = %s"
+                set_fragment = ", ".join(f'"{col}" = %s' for col in payload.keys())
+                sql = f"UPDATE centro_custo SET {set_fragment} WHERE \"{self._columns['id']}\" = %s"
                 params = list(payload.values())
                 params.append(self.current_id)
                 cursor.execute(sql, tuple(params))
                 conn.commit()
                 QMessageBox.information(self.widget, "Centro de Custo", "Centro de custo atualizado com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             if conn:
                 conn.rollback()
             QMessageBox.critical(self.widget, "Centro de Custo", f"Erro ao salvar centro de custo.\n{err}")
@@ -274,12 +282,12 @@ class CentroCustoController:
             conn = self._ensure_connection()
             cursor = conn.cursor()
             cursor.execute(
-                f"DELETE FROM centro_custo WHERE `{self._columns['id']}` = %s",
+                f"DELETE FROM centro_custo WHERE \"{self._columns['id']}\" = %s",
                 (self.current_id,),
             )
             conn.commit()
             QMessageBox.information(self.widget, "Centro de Custo", "Centro de custo excluído com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             if conn:
                 conn.rollback()
             QMessageBox.critical(self.widget, "Centro de Custo", f"Erro ao excluir centro de custo.\n{err}")
@@ -345,21 +353,21 @@ class CentroCustoController:
         self._set_buttons_state()
 
     def _fetch_rows(self, search_term: Optional[str]) -> List[Dict]:
-        columns_fragment = ", ".join(f"`{config.name}`" for config in self._table_headers)
+        columns_fragment = ", ".join(f'"{config.name}"' for config in self._table_headers)
         sql = f"SELECT {columns_fragment} FROM centro_custo"
         params: List[str] = []
         filters: List[str] = []
         if search_term:
             like = f"%{search_term}%"
-            filters.append(f"`{self._columns['nome']}` LIKE %s")
+            filters.append(f"\"{self._columns['nome']}\" LIKE %s")
             params.append(like)
             codigo_col = self._columns.get("codigo")
             if codigo_col:
-                filters.append(f"`{codigo_col}` LIKE %s")
+                filters.append(f'"{codigo_col}" LIKE %s')
                 params.append(like)
         if filters:
             sql += " WHERE " + " OR ".join(filters)
-        sql += f" ORDER BY `{self._columns['nome']}`"
+        sql += f" ORDER BY \"{self._columns['nome']}\""
         param_tuple = tuple(params) if params else None
         return self.db_manager.fetch_all(sql, param_tuple)
 
@@ -389,11 +397,11 @@ class CentroCustoController:
             conn = self._ensure_connection()
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                f"SELECT * FROM centro_custo WHERE `{self._columns['id']}` = %s",
+                f"SELECT * FROM centro_custo WHERE \"{self._columns['id']}\" = %s",
                 (record_id,),
             )
             return cursor.fetchone()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Centro de Custo", f"Erro ao consultar dados do centro de custo.\n{err}")
             return None
         finally:
@@ -549,6 +557,6 @@ class CentroCustoController:
         conn = self.db_manager.connection
         if not conn or not conn.is_connected():
             if not self.db_manager.connect():
-                raise mysql.connector.Error(msg="Não foi possível estabelecer conexão com o banco de dados.")
+                raise DatabaseError("Nao foi possivel estabelecer conexao com o banco de dados.")
             conn = self.db_manager.connection
         return conn

@@ -1,4 +1,4 @@
 PySide6
-mysql-connector-python
+psycopg2-binary
 openpyxl
 bcrypt>=4.0.1

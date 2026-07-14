@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from backend.database.database_manager import DatabaseManager
+from backend.database.postgres_driver import ForeignKeyViolation, UniqueViolation
 from backend.utils.validators import validar_email, validar_senha
 from backend.services.audit_helper import registrar_criacao, registrar_atualizacao, registrar_exclusao
 from backend.utils.loading_indicator import LoadingCursor
@@ -300,8 +301,7 @@ class UsuariosController:
                     {"nome": user['nome'], "email": user['email'], "nivel_acesso": user['nivel_acesso']}
                 )
         except Exception as exc:
-            import mysql.connector
-            if isinstance(exc, mysql.connector.Error) and exc.errno == 1062:
+            if isinstance(exc, UniqueViolation):
                 QMessageBox.warning(self.widget, "Usuários", "E-mail já cadastrado.")
             else:
                 QMessageBox.critical(self.widget, "Usuários", f"Não foi possível criar o usuário.\n{exc}")
@@ -404,8 +404,7 @@ class UsuariosController:
             
             self.db_manager.delete_user(usuario.id_usuario)
         except Exception as exc:
-            import mysql.connector
-            if isinstance(exc, mysql.connector.Error) and exc.errno == 1451:
+            if isinstance(exc, ForeignKeyViolation):
                 QMessageBox.warning(self.widget, "Usuários", "Não é possível excluir este usuário pois existem dados relacionados.")
             else:
                 QMessageBox.critical(self.widget, "Usuários", f"Não foi possível remover o usuário.\n{exc}")

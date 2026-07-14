@@ -80,7 +80,15 @@ class DuplicateValidator:
         """
         try:
             cursor = self.db_manager.connection.cursor()
-            cursor.execute("SHOW COLUMNS FROM fornecedores")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("fornecedores",),
+            )
             columns = {row[0] for row in cursor.fetchall()}
             name_column = next(
                 (candidate for candidate in ("nome_fornecedor", "nome", "razao_social") if candidate in columns),
@@ -92,12 +100,12 @@ class DuplicateValidator:
             
             if id_atual:
                 cursor.execute(
-                    f"SELECT id_fornecedor, `{name_column}` FROM fornecedores WHERE cnpj = %s AND id_fornecedor != %s",
+                    f"SELECT id_fornecedor, \"{name_column}\" FROM fornecedores WHERE cnpj = %s AND id_fornecedor != %s",
                     (cnpj, id_atual)
                 )
             else:
                 cursor.execute(
-                    f"SELECT id_fornecedor, `{name_column}` FROM fornecedores WHERE cnpj = %s",
+                    f"SELECT id_fornecedor, \"{name_column}\" FROM fornecedores WHERE cnpj = %s",
                     (cnpj,)
                 )
             
@@ -182,7 +190,15 @@ class DuplicateValidator:
         """
         try:
             cursor = self.db_manager.connection.cursor()
-            cursor.execute("SHOW COLUMNS FROM patrimonios")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("patrimonios",),
+            )
             columns = {row[0] for row in cursor.fetchall()}
             column = next(
                 (candidate for candidate in ("plaqueta", "numero_patrimonio", "numero_serie") if candidate in columns),
@@ -194,12 +210,12 @@ class DuplicateValidator:
             
             if id_atual:
                 cursor.execute(
-                    f"SELECT id_patrimonio, nome FROM patrimonios WHERE `{column}` = %s AND id_patrimonio != %s",
+                    f"SELECT id_patrimonio, nome FROM patrimonios WHERE \"{column}\" = %s AND id_patrimonio != %s",
                     (plaqueta, id_atual),
                 )
             else:
                 cursor.execute(
-                    f"SELECT id_patrimonio, nome FROM patrimonios WHERE `{column}` = %s",
+                    f"SELECT id_patrimonio, nome FROM patrimonios WHERE \"{column}\" = %s",
                     (plaqueta,),
                 )
             

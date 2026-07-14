@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-import mysql.connector
 from PySide6.QtCore import Qt
+from backend.database.postgres_driver import DatabaseError, ForeignKeyViolation, UniqueViolation
 from backend.utils.validators import validar_cnpj, validar_telefone, validar_email, remover_mascara_cnpj, remover_mascara_telefone
 from backend.database.database_manager import DatabaseManager
 from PySide6.QtGui import QStandardItem, QStandardItemModel
@@ -76,9 +76,17 @@ class FornecedoresController:
         try:
             conn = self._ensure_connection()
             cursor = conn.cursor()
-            cursor.execute("SHOW COLUMNS FROM fornecedores")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                ("fornecedores",),
+            )
             available = [row[0] for row in cursor.fetchall()]
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Fornecedores", f"Não foi possível ler as colunas de fornecedores.\n{err}")
             return
         finally:
@@ -185,7 +193,7 @@ class FornecedoresController:
             if self.current_id is None:
                 # Filtrar campos None para não inserir valores nulos como string
                 filtered_data = {k: v for k, v in data.items() if k and v is not None}
-                columns_fragment = ", ".join(f"`{col}`" for col in filtered_data.keys())
+                columns_fragment = ", ".join(f'"{col}"' for col in filtered_data.keys())
                 values_fragment = ", ".join(["%s"] * len(filtered_data))
                 sql = f"INSERT INTO fornecedores ({columns_fragment}) VALUES ({values_fragment})"
                 cursor.execute(sql, tuple(filtered_data.values()))
@@ -194,18 +202,18 @@ class FornecedoresController:
                 QMessageBox.information(self.widget, "Fornecedores", "Fornecedor cadastrado com sucesso.")
             else:
                 valid_items = {k: v for k, v in data.items() if k}
-                set_fragment = ", ".join(f"`{col}` = %s" for col in valid_items.keys())
-                sql = f"UPDATE fornecedores SET {set_fragment} WHERE `{self._columns['id']}` = %s"
+                set_fragment = ", ".join(f'"{col}" = %s' for col in valid_items.keys())
+                sql = f"UPDATE fornecedores SET {set_fragment} WHERE \"{self._columns['id']}\" = %s"
                 params = list(valid_items.values())
                 params.append(self.current_id)
                 cursor.execute(sql, tuple(params))
                 conn.commit()
                 QMessageBox.information(self.widget, "Fornecedores", "Fornecedor atualizado com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             if conn:
                 conn.rollback()
             # Detectar erro de CNPJ duplicado
-            if err.errno == 1062 and 'cnpj' in str(err).lower():
+            if isinstance(err, UniqueViolation):
                 QMessageBox.warning(self.widget, "Fornecedores", "Já existe um fornecedor com este CNPJ.")
             else:
                 QMessageBox.critical(self.widget, "Fornecedores", f"Erro ao salvar fornecedor.\n{err}")
@@ -248,16 +256,16 @@ class FornecedoresController:
             conn = self._ensure_connection()
             cursor = conn.cursor()
             cursor.execute(
-                f"DELETE FROM fornecedores WHERE `{self._columns['id']}` = %s",
+                f"DELETE FROM fornecedores WHERE \"{self._columns['id']}\" = %s",
                 (self.current_id,),
             )
             conn.commit()
             QMessageBox.information(self.widget, "Fornecedores", "Fornecedor excluído com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             if conn:
                 conn.rollback()
             # Detectar erro de chave estrangeira (registros dependentes)
-            if err.errno == 1451:
+            if isinstance(err, ForeignKeyViolation):
                 QMessageBox.warning(self.widget, "Fornecedores", "Não é possível excluir este fornecedor pois existem dados relacionados (ex.: patrimônios, notas fiscais, etc.).")
             else:
                 QMessageBox.critical(self.widget, "Fornecedores", f"Erro ao excluir fornecedor.\n{err}")
@@ -320,19 +328,19 @@ class FornecedoresController:
         self._set_buttons_state()
 
     def _fetch_rows(self, search_term: Optional[str]) -> List[Dict]:
-        columns_fragment = ", ".join(f"`{config.name}`" for config in self._table_headers)
+        columns_fragment = ", ".join(f'"{config.name}"' for config in self._table_headers)
         sql = f"SELECT {columns_fragment} FROM fornecedores"
         params: List[str] = []
         if search_term:
             like = f"%{search_term}%"
-            filters = [f"`{self._columns['nome']}` LIKE %s"]
+            filters = [f"\"{self._columns['nome']}\" LIKE %s"]
             params.append(like)
             cnpj_column = self._columns.get("cnpj")
             if cnpj_column:
-                filters.append(f"`{cnpj_column}` LIKE %s")
+                filters.append(f'"{cnpj_column}" LIKE %s')
                 params.append(like)
             sql += " WHERE " + " OR ".join(filters)
-        sql += f" ORDER BY `{self._columns['nome']}`"
+        sql += f" ORDER BY \"{self._columns['nome']}\""
         return self.db_manager.fetch_all(sql, tuple(params) if params else None)
 
     def _load_row(self, row_index: int, focus_form: bool):
@@ -361,11 +369,11 @@ class FornecedoresController:
         try:
             cursor = conn.cursor(dictionary=True)
             cursor.execute(
-                f"SELECT * FROM fornecedores WHERE `{self._columns['id']}` = %s",
+                f"SELECT * FROM fornecedores WHERE \"{self._columns['id']}\" = %s",
                 (record_id,),
             )
             return cursor.fetchone()
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             QMessageBox.critical(self.widget, "Fornecedores", f"Erro ao consultar fornecedor.\n{err}")
             return None
         finally:
@@ -506,7 +514,7 @@ class FornecedoresController:
         conn = self.db_manager.connection
         if not conn or not conn.is_connected():
             if not self.db_manager.connect():
-                raise mysql.connector.Error(msg="Não foi possível estabelecer conexão com o banco de dados.")
+                raise DatabaseError("Nao foi possivel estabelecer conexao com o banco de dados.")
             conn = self.db_manager.connection
         return conn
 

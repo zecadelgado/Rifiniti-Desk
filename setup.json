@@ -1,7 +1,7 @@
 {
   "projeto": {
     "nome": "Rifiniti-Desk / NeoBenesys",
-    "tipo": "Aplicativo desktop Python com PySide6 e MySQL",
+    "tipo": "Aplicativo desktop Python com PySide6 e PostgreSQL/Supabase",
     "arquivo_principal": "main.py",
     "descricao": "Sistema desktop para gestao de patrimonio, usuarios, fornecedores, centros de custo, setores/locais, notas fiscais, movimentacoes, manutencoes, depreciacao, auditoria, anexos e relatorios."
   },
@@ -16,19 +16,20 @@
       ],
       "observacao": "No Windows, normalmente o comando py funciona quando o Python Launcher esta instalado."
     },
-    "mysql": {
-      "versao_recomendada": "MySQL Server 8.0 ou superior",
-      "servico_windows": "MySQL80",
-      "verificar_servico": "Get-Service MySQL80",
-      "iniciar_servico": "Start-Service MySQL80",
-      "observacao": "O MySQL precisa estar rodando antes de preparar ou executar o sistema."
+    "postgresql": {
+      "tipo": "PostgreSQL hospedado no Supabase",
+      "host": "aws-1-us-west-2.pooler.supabase.com",
+      "porta": 5432,
+      "database": "postgres",
+      "usuario_env": "POSTGRES_USER",
+      "observacao": "A conexao principal do sistema e PostgreSQL/Supabase e fica configurada no arquivo .env."
     }
   },
   "dependencias_python": {
     "arquivo": "requirements.txt",
     "bibliotecas": [
       "PySide6",
-      "mysql-connector-python",
+      "psycopg2-binary",
       "openpyxl",
       "bcrypt>=4.0.1"
     ],
@@ -39,115 +40,93 @@
     ]
   },
   "banco_de_dados": {
-    "tipo": "MySQL",
+    "tipo": "PostgreSQL/Supabase",
     "arquivo_sql_principal": "database/data.sql",
-    "banco_padrao": "patrimonio_ideau_v2",
-    "script_de_preparo": "setup_database.py",
-    "camada_de_compatibilidade": "backend/db_compat.py",
-    "explicacao": "O arquivo database/data.sql cria o banco novo. O arquivo backend/db_compat.py ajusta automaticamente nomes de tabelas e colunas para manter compatibilidade com o codigo atual.",
-    "configuracao_padrao": {
-      "host": "localhost",
-      "usuario_mysql": "root",
-      "senha_mysql_padrao_no_codigo": "SUA SENHAAA",
-      "database": "patrimonio_ideau_v2"
-    },
-    "variaveis_de_ambiente_suportadas": {
-      "DB_HOST": "Host do MySQL. Padrao: localhost",
-      "DB_USER": "Usuario do MySQL. Padrao: root",
-      "DB_PASSWORD": "Senha do usuario MySQL. Padrao atual no codigo: SUA SENHAAA",
-      "DB_NAME": "Nome do banco do sistema. Padrao: patrimonio_ideau_v2"
+    "database_padrao": "postgres",
+    "script_de_preparo": "scripts/setup_database.py",
+    "camada_de_compatibilidade": "backend/database/db_compat.py",
+    "configuracao": {
+      "POSTGRES_HOST": "Host do PostgreSQL/Supabase",
+      "POSTGRES_PORT": "Porta do PostgreSQL. Padrao: 5432",
+      "POSTGRES_DB": "Nome do banco. Padrao: postgres",
+      "POSTGRES_USER": "Usuario do banco",
+      "POSTGRES_PASSWORD": "Senha do banco",
+      "DATABASE_URL": "URL completa PostgreSQL com sslmode=require"
     },
     "preparar_banco": [
-      ".\\.venv\\Scripts\\python.exe setup_database.py"
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py"
     ],
-    "recriar_banco_do_zero": [
-      ".\\.venv\\Scripts\\python.exe setup_database.py --reset"
+    "recriar_schema_public_do_zero": [
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py --reset"
     ],
-    "observacao_importante": "O comando --reset apaga e recria o banco configurado em DB_NAME. Use apenas quando puder perder os dados atuais."
+    "observacao_importante": "O comando --reset remove as tabelas do schema public configurado. Use apenas quando puder perder os dados atuais."
   },
   "usuario_inicial_do_sistema": {
-    "quando_e_criado": "Criado automaticamente somente se a tabela usuarios estiver vazia.",
-    "arquivo_responsavel": "backend/db_compat.py",
+    "quando_e_criado": "Criado automaticamente somente se a tabela usuarios estiver vazia e INITIAL_ADMIN_PASSWORD estiver definido.",
+    "arquivo_responsavel": "backend/database/db_compat.py",
     "perfil": "master",
-    "email": "admin@ideau.local",
-    "senha": "Admin@123",
+    "email": "Definido em .env como INITIAL_ADMIN_EMAIL",
+    "senha": "Definida em .env como INITIAL_ADMIN_PASSWORD",
     "recomendacao": "Depois do primeiro login, crie usuarios reais e troque/remova essa credencial inicial em ambientes compartilhados."
   },
   "tutorial_rapido_windows": {
     "passo_1_instalar_requisitos": [
       "Instale Python 3.11 ou superior.",
-      "Instale MySQL Server 8.0 ou superior.",
-      "Confirme que o servico MySQL esta rodando."
+      "Configure o .env com as credenciais PostgreSQL/Supabase."
     ],
     "passo_2_abrir_terminal": [
       "Abra o PowerShell.",
       "Entre na pasta do projeto: cd C:\\src\\Patrimonio_Ideau\\Rifiniti-Desk"
     ],
-    "passo_3_configurar_senha_do_mysql_se_precisar": [
-      "$env:DB_PASSWORD=\"sua_senha_do_mysql\"",
-      "$env:DB_USER=\"root\"",
-      "$env:DB_NAME=\"patrimonio_ideau_v2\""
+    "passo_3_instalar_dependencias": [
+      "py -3 -m venv .venv",
+      ".\\.venv\\Scripts\\python.exe -m pip install --upgrade pip",
+      ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt"
     ],
-    "passo_4_rodar_setup_automatico": [
-      ".\\setup.ps1"
+    "passo_4_preparar_banco": [
+      ".\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py"
     ],
     "passo_5_executar_sistema": [
       ".\\.venv\\Scripts\\python.exe main.py"
     ],
     "passo_6_fazer_login": [
-      "Email: admin@ideau.local",
-      "Senha: Admin@123"
-    ]
-  },
-  "tutorial_manual_sem_setup_ps1": {
-    "comandos": [
-      "cd C:\\src\\Patrimonio_Ideau\\Rifiniti-Desk",
-      "py -3 -m venv .venv",
-      ".\\.venv\\Scripts\\python.exe -m pip install --upgrade pip",
-      ".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
-      ".\\.venv\\Scripts\\python.exe setup_database.py",
-      ".\\.venv\\Scripts\\python.exe main.py"
+      "Email: valor de INITIAL_ADMIN_EMAIL no arquivo .env",
+      "Senha: valor de INITIAL_ADMIN_PASSWORD no arquivo .env"
     ]
   },
   "testes_e_diagnostico": {
-    "testar_conexao": ".\\.venv\\Scripts\\python.exe test_connection.py",
+    "testar_conexao": ".\\.venv\\Scripts\\python.exe .\\scripts\\test_connection.py",
     "erros_comuns": [
       {
-        "erro": "1045 Access denied for user 'root'@'localhost'",
-        "causa": "Senha ou usuario do MySQL incorretos.",
-        "solucao": "Defina a senha correta com $env:DB_PASSWORD=\"sua_senha\" antes de rodar o sistema, ou ajuste backend/config_db.py."
+        "erro": "password authentication failed",
+        "causa": "Usuario ou senha PostgreSQL incorretos.",
+        "solucao": "Confira POSTGRES_USER, POSTGRES_PASSWORD e DATABASE_URL no .env."
       },
       {
-        "erro": "1049 Unknown database 'patrimonio_ideau_v2'",
-        "causa": "Banco ainda nao foi criado.",
-        "solucao": "Rode .\\.venv\\Scripts\\python.exe setup_database.py. A main.py tambem tenta criar automaticamente usando database/data.sql."
+        "erro": "connection timed out",
+        "causa": "Host, porta, rede ou SSL incorretos.",
+        "solucao": "Confira POSTGRES_HOST, POSTGRES_PORT e se DATABASE_URL usa sslmode=require."
       },
       {
-        "erro": "python nao reconhecido ou No installed Python found",
-        "causa": "Python nao instalado ou nao esta no PATH.",
-        "solucao": "Instale Python 3.11+ e marque Add Python to PATH. Depois reabra o PowerShell."
-      },
-      {
-        "erro": "Can't connect to MySQL server",
-        "causa": "MySQL parado ou host/porta incorretos.",
-        "solucao": "Verifique o servico MySQL80 com Get-Service MySQL80 e inicie com Start-Service MySQL80."
+        "erro": "relation does not exist",
+        "causa": "As tabelas ainda nao foram criadas.",
+        "solucao": "Rode .\\.venv\\Scripts\\python.exe .\\scripts\\setup_database.py."
       }
     ]
   },
   "arquivos_importantes": {
     "main.py": "Arquivo principal para abrir o aplicativo.",
     "requirements.txt": "Lista de bibliotecas Python.",
-    "setup.ps1": "Setup automatico no Windows: cria venv, instala dependencias e prepara banco.",
-    "setup_database.py": "Importa database/data.sql e aplica compatibilidade.",
-    "database/data.sql": "Banco de dados novo do projeto.",
-    "backend/config_db.py": "Configuracao de conexao com MySQL.",
-    "backend/db_compat.py": "Ajustes automaticos do schema e usuario master inicial.",
-    "test_connection.py": "Teste de conexao e diagnostico do banco."
+    "database/data.sql": "Schema PostgreSQL do projeto.",
+    "scripts/setup_database.py": "Importa database/data.sql e aplica compatibilidade.",
+    "scripts/test_connection.py": "Teste de conexao e diagnostico do banco PostgreSQL.",
+    "backend/database/config_db.py": "Configuracao principal de conexao PostgreSQL.",
+    "backend/database/postgres_driver.py": "Adaptador de conexao/cursor PostgreSQL usado pelo app.",
+    "backend/database/db_compat.py": "Ajustes automaticos do schema e usuario master inicial."
   },
   "observacoes_para_compartilhar": [
-    "Compartilhe o projeto inteiro, incluindo database/data.sql, setup.ps1, setup_database.py e requirements.txt.",
-    "Cada computador precisa ter Python e MySQL instalados.",
-    "A senha do MySQL pode variar por computador; use DB_PASSWORD para configurar sem editar codigo.",
+    "Compartilhe o projeto inteiro, incluindo database/data.sql, scripts/setup_database.py e requirements.txt.",
+    "Cada computador precisa ter Python instalado e acesso ao PostgreSQL/Supabase configurado no .env.",
     "O usuario inicial do sistema e apenas para primeiro acesso."
   ]
 }

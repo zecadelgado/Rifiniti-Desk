@@ -196,7 +196,13 @@ class TestSuite:
         """TC-077: Verificar se tabela de auditorias existe"""
         try:
             cursor = self.db_manager.connection.cursor()
-            cursor.execute("SHOW TABLES LIKE 'auditorias'")
+            cursor.execute(
+                """
+                SELECT table_name
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name = 'auditorias'
+                """
+            )
             result = cursor.fetchone()
             cursor.close()
             

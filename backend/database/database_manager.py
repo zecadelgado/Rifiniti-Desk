@@ -12,12 +12,11 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 
 from email.message import EmailMessage
 
-import mysql.connector
-from mysql.connector import errorcode
 import bcrypt
 
 from backend.database.config_db import get_connection
 from backend.database.db_compat import ensure_runtime_schema
+from backend.database.postgres_driver import DatabaseError, ForeignKeyViolation, UndefinedTable, UniqueViolation
 from backend.services.cache_manager import CacheManager
 from backend.utils.validators import validar_senha
 
@@ -101,20 +100,7 @@ class DatabaseManager:
             print("Conexao com o banco de dados estabelecida com sucesso!")
             self._document_manutencao_migration_dependency()
             return True
-        except mysql.connector.Error as err:
-            if err.errno == errorcode.ER_BAD_DB_ERROR:
-                try:
-                    print("[Banco] Banco nao encontrado. Importando database/data.sql...")
-                    from scripts.setup_database import import_data_sql
-
-                    import_data_sql(reset=False)
-                    self.connection = get_connection()
-                    ensure_runtime_schema(self.connection)
-                    print("Conexao com o banco de dados estabelecida com sucesso!")
-                    self._document_manutencao_migration_dependency()
-                    return True
-                except Exception as bootstrap_err:
-                    print(f"Erro ao preparar o banco de dados: {bootstrap_err}")
+        except DatabaseError as err:
             print(f"Erro ao conectar ao banco de dados: {err}")
             return False
 
@@ -126,7 +112,7 @@ class DatabaseManager:
     def _ensure_connection(self):
         if not self.connection or not self.connection.is_connected():
             if not self.connect():
-                raise mysql.connector.Error(msg="Nao foi possivel conectar ao banco de dados.")
+                raise DatabaseError("Nao foi possivel conectar ao banco de dados.")
 
     def execute_query(self, query, params=None, fetch_one=False, fetch_all=False):
         if not self.connection or not self.connection.is_connected():
@@ -146,7 +132,7 @@ class DatabaseManager:
             else:
                 self.connection.commit()
                 return cursor.rowcount
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             print(f"Erro ao executar a query: {err}")
             self.connection.rollback()
             return None
@@ -204,7 +190,15 @@ class DatabaseManager:
         self._ensure_connection()
         cursor = self.connection.cursor()
         try:
-            cursor.execute(f"SHOW COLUMNS FROM `{table}`")
+            cursor.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = %s
+                ORDER BY ordinal_position
+                """,
+                (table,),
+            )
             return [row[0] for row in cursor.fetchall()]
         finally:
             cursor.close()
@@ -223,7 +217,7 @@ class DatabaseManager:
                     "Execute a migração database/migrations_manutencao.sql para habilitar todos os recursos."
                 )
             self._manutencao_columns = columns
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             print(
                 "[Aviso] Não foi possível validar a estrutura da tabela manutencoes. "
                 "Certifique-se de aplicar database/migrations_manutencao.sql. Erro: "
@@ -235,7 +229,7 @@ class DatabaseManager:
         if self._manutencao_columns is None:
             try:
                 self._manutencao_columns = set(self.get_table_columns("manutencoes"))
-            except mysql.connector.Error:
+            except DatabaseError:
                 # Em caso de falha na leitura do schema, assumir o conjunto completo para não bloquear a UI
                 self._manutencao_columns = {
                     "id_patrimonio",
@@ -275,7 +269,7 @@ class DatabaseManager:
 
         try:
             available = set(self.get_table_columns("usuarios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             available = {"nome", "email", "senha", "nivel_acesso"}
 
         if "ativo" in available and ativo is not None:
@@ -295,7 +289,7 @@ class DatabaseManager:
         allowed: Sequence[str]
         try:
             allowed = self.get_table_columns("usuarios")
-        except mysql.connector.Error:
+        except DatabaseError:
             allowed = ("nome", "email", "senha", "nivel_acesso", "ativo")
 
         updates: List[str] = []
@@ -305,10 +299,10 @@ class DatabaseManager:
                 continue
             if key == "nivel_acesso":
                 role = self._normalize_role(str(value))
-                updates.append("`nivel_acesso` = %s")
+                updates.append('"nivel_acesso" = %s')
                 params.append(role)
                 continue
-            updates.append(f"`{key}` = %s")
+            updates.append(f'"{key}" = %s')
             params.append(value)
 
         if not updates:
@@ -344,7 +338,7 @@ class DatabaseManager:
     def set_user_active(self, user_id: int, active: bool) -> bool:
         try:
             columns = self.get_table_columns("usuarios")
-        except mysql.connector.Error:
+        except DatabaseError:
             columns = []
         if "ativo" not in columns:
             return False
@@ -357,15 +351,14 @@ class DatabaseManager:
             return
         create_sql = """
         CREATE TABLE IF NOT EXISTS password_resets (
-            id_reset BIGINT AUTO_INCREMENT PRIMARY KEY,
-            user_id BIGINT NOT NULL,
+            id_reset BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES usuarios(id_usuario),
             token_hash VARCHAR(255) NOT NULL,
-            expires_at DATETIME NOT NULL,
-            used_at DATETIME NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            ativo TINYINT(1) NOT NULL DEFAULT 1,
-            CONSTRAINT fk_password_resets_user FOREIGN KEY (user_id) REFERENCES usuarios(id_usuario)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            expires_at TIMESTAMP NOT NULL,
+            used_at TIMESTAMP NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            ativo SMALLINT NOT NULL DEFAULT 1
+        )
         """
         self.execute_query(create_sql)
         self._password_reset_table_checked = True
@@ -392,8 +385,8 @@ class DatabaseManager:
         user_name: str = "",
         expiration_minutes: int = 30,
     ) -> Tuple[bool, str]:
-        smtp_user = os.getenv("SMTP_USER", "neobenesys.sup@gmail.com")
-        smtp_password = os.getenv("SMTP_PASSWORD", "sskx wqpc hlrg ddfg")
+        smtp_user = os.getenv("SMTP_USER", "")
+        smtp_password = os.getenv("SMTP_PASSWORD", "")
         if smtp_password:
             smtp_password = smtp_password.replace(" ", "")
         smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -542,7 +535,7 @@ class DatabaseManager:
     def ensure_patrimonio_optional_columns(self) -> None:
         try:
             columns = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error as exc:
+        except DatabaseError as exc:
             print(f"[DatabaseManager] Nao foi possivel inspecionar a tabela patrimonios: {exc}")
             return
 
@@ -575,7 +568,7 @@ class DatabaseManager:
                 cursor.execute(f"ALTER TABLE patrimonios {stmt}")
             self.connection.commit()
             print("[DatabaseManager] Colunas opcionais de patrimonios garantidas com sucesso.")
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             self.connection.rollback()
             print(f"[DatabaseManager] Falha ao ajustar colunas opcionais de patrimonios: {err}")
         finally:
@@ -601,7 +594,7 @@ class DatabaseManager:
 
         try:
             available_columns = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             available_columns = {
                 "id_patrimonio",
                 "nome",
@@ -681,7 +674,7 @@ class DatabaseManager:
                 values.append(numero_patrimonio_value)
 
             placeholders = ", ".join(["%s"] * len(columns))
-            columns_clause = ", ".join(f"`{col}`" for col in columns)
+            columns_clause = ", ".join(f'"{col}"' for col in columns)
 
             cursor.execute(
                 f"INSERT INTO patrimonios ({columns_clause}) VALUES ({placeholders})",
@@ -689,7 +682,7 @@ class DatabaseManager:
             )
             self.connection.commit()
             return cursor.lastrowid
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             self.connection.rollback()
             raise err
         finally:
@@ -714,7 +707,7 @@ class DatabaseManager:
         # Descobrir colunas disponíveis uma vez
         try:
             available_columns = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             available_columns = {
                 "nome",
                 "descricao",
@@ -751,7 +744,7 @@ class DatabaseManager:
             raise ValueError("Nenhuma coluna valida para inserir patrimonio.")
 
         placeholders = ", ".join(["%s"] * len(columns_for_insert))
-        columns_clause = ", ".join(f"`{c}`" for c in columns_for_insert)
+        columns_clause = ", ".join(f'"{c}"' for c in columns_for_insert)
 
         self._ensure_connection()
         cursor = self.connection.cursor()
@@ -798,7 +791,7 @@ class DatabaseManager:
 
             self.connection.commit()
             return inserted_ids
-        except mysql.connector.Error as err:
+        except DatabaseError as err:
             self.connection.rollback()
             raise err
         finally:
@@ -807,7 +800,7 @@ class DatabaseManager:
     def list_centros_custo_por_patrimonio(self, patrimonio_id: int) -> List[Dict[str, Any]]:
         try:
             centro_cols = set(self.get_table_columns("centro_custo"))
-        except mysql.connector.Error:
+        except DatabaseError:
             centro_cols = set()
         has_ativo = "ativo" in centro_cols
 
@@ -824,10 +817,9 @@ class DatabaseManager:
         """
         try:
             return self.fetch_all(query, (patrimonio_id,))
-        except mysql.connector.Error as err:
-            missing_tables = {errorcode.ER_NO_SUCH_TABLE, getattr(errorcode, "ER_BAD_TABLE_ERROR", 1103)}
-            if err.errno in missing_tables:
-                return []
+        except UndefinedTable:
+            return []
+        except DatabaseError:
             raise
 
     def set_patrimonio_centros_custo(self, patrimonio_id: int, centros_ids: Sequence[int]) -> None:
@@ -856,11 +848,11 @@ class DatabaseManager:
                     values,
                 )
             self.connection.commit()
-        except mysql.connector.Error as err:
+        except UndefinedTable:
             self.connection.rollback()
-            missing_tables = {errorcode.ER_NO_SUCH_TABLE, getattr(errorcode, "ER_BAD_TABLE_ERROR", 1103)}
-            if err.errno in missing_tables:
-                return
+            return
+        except DatabaseError as err:
+            self.connection.rollback()
             raise
         finally:
             cursor.close()
@@ -883,7 +875,7 @@ class DatabaseManager:
 
         try:
             allowed = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             allowed = {
                 "nome",
                 "descricao",
@@ -905,7 +897,7 @@ class DatabaseManager:
         for key, value in data.items():
             if key not in allowed or key == "id_patrimonio":
                 continue
-            assignments.append(f"`{key}` = %s")
+            assignments.append(f'"{key}" = %s')
             params.append(value if key != "numero_nota" else (value or None))
 
         if not assignments:
@@ -943,14 +935,9 @@ class DatabaseManager:
                     total = int(result.get("total", 0))
                     if total > 0:
                         dependencies[label] = total
-                except mysql.connector.Error as err:
-                    missing = {
-                        errorcode.ER_NO_SUCH_TABLE,
-                        errorcode.ER_BAD_TABLE_ERROR,
-                        getattr(errorcode, "ER_WRONG_TABLE_NAME", 1103),
-                    }
-                    if err.errno in missing:
-                        continue
+                except UndefinedTable:
+                    continue
+                except DatabaseError:
                     raise
         finally:
             cursor.close()
@@ -972,14 +959,11 @@ class DatabaseManager:
             cursor.execute(query, (patrimonio_id,))
             self.connection.commit()
             return cursor.rowcount > 0
-        except mysql.connector.Error as err:
+        except ForeignKeyViolation as err:
             self.connection.rollback()
-            fk_errs = {errorcode.ER_ROW_IS_REFERENCED_2}
-            legacy_fk = getattr(errorcode, "ER_ROW_IS_REFERENCED", None)
-            if legacy_fk is not None:
-                fk_errs.add(legacy_fk)
-            if err.errno in fk_errs:
-                raise ValueError("Nao e possivel excluir o patrimonio porque existem registros relacionados.") from err
+            raise ValueError("Nao e possivel excluir o patrimonio porque existem registros relacionados.") from err
+        except DatabaseError as err:
+            self.connection.rollback()
             raise err
         finally:
             cursor.close()
@@ -1004,7 +988,7 @@ class DatabaseManager:
             cursor.execute("DELETE FROM patrimonios WHERE id_patrimonio = %s", (patrimonio_id,))
             self.connection.commit()
             return cursor.rowcount > 0
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1045,7 +1029,7 @@ class DatabaseManager:
     def list_users(self, search=None):
         try:
             columns = set(self.get_table_columns("usuarios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             columns = set()
 
         select_fields = [
@@ -1127,9 +1111,9 @@ class DatabaseManager:
                 )
                 self.connection.commit()
                 mapping[nome] = int(cursor.lastrowid)
-            except mysql.connector.Error as err:
+            except DatabaseError as err:
                 self.connection.rollback()
-                if err.errno == errorcode.ER_DUP_ENTRY:
+                if isinstance(err, UniqueViolation):
                     row = self.fetch_one(
                         "SELECT id_categoria FROM categorias WHERE nome_categoria = %s",
                         (nome,),
@@ -1189,7 +1173,7 @@ class DatabaseManager:
     def list_centros_custo(self, search=None, include_inativos: bool = False):
         try:
             columns = set(self.get_table_columns("centro_custo"))
-        except mysql.connector.Error:
+        except DatabaseError:
             columns = set()
         has_ativo = "ativo" in columns
 
@@ -1218,7 +1202,7 @@ class DatabaseManager:
     def _get_setores_locais_columns(self) -> Set[str]:
         try:
             return set(self.get_table_columns("setores_locais"))
-        except mysql.connector.Error:
+        except DatabaseError:
             return {
                 "id_setor_local",
                 "nome_setor_local",
@@ -1276,7 +1260,7 @@ class DatabaseManager:
             raise ValueError("Dados de setor/local não informados.")
         try:
             allowed = set(self.get_table_columns("setores_locais"))
-        except mysql.connector.Error:
+        except DatabaseError:
             allowed = {
                 "nome_setor_local",
                 "localizacao",
@@ -1288,7 +1272,7 @@ class DatabaseManager:
         payload = {k: v for k, v in data.items() if k in allowed and k != "id_setor_local"}
         if not payload:
             raise ValueError("Nenhuma coluna válida para setores/locais.")
-        columns = ", ".join(f"`{key}`" for key in payload.keys())
+        columns = ", ".join(f'"{key}"' for key in payload.keys())
         placeholders = ", ".join(["%s"] * len(payload))
         sql = f"INSERT INTO setores_locais ({columns}) VALUES ({placeholders})"
         self._ensure_connection()
@@ -1297,7 +1281,7 @@ class DatabaseManager:
             cursor.execute(sql, tuple(payload.values()))
             self.connection.commit()
             new_id = cursor.lastrowid
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1310,7 +1294,7 @@ class DatabaseManager:
             return False
         try:
             allowed = set(self.get_table_columns("setores_locais"))
-        except mysql.connector.Error:
+        except DatabaseError:
             allowed = {
                 "nome_setor_local",
                 "localizacao",
@@ -1324,7 +1308,7 @@ class DatabaseManager:
         for key, value in data.items():
             if key not in allowed or key == "id_setor_local":
                 continue
-            updates.append(f"`{key}` = %s")
+            updates.append(f'"{key}" = %s')
             params.append(value)
         if not updates:
             return False
@@ -1345,12 +1329,12 @@ class DatabaseManager:
     def list_patrimonios(self, filters: Optional[Dict[str, Any]] = None):
         try:
             columns = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             columns = {"quantidade", "numero_nota"}
 
         try:
             centro_cols = set(self.get_table_columns("centro_custo"))
-        except mysql.connector.Error:
+        except DatabaseError:
             centro_cols = set()
         centros_filter = " AND cc.ativo = 1" if "ativo" in centro_cols else ""
 
@@ -1429,7 +1413,7 @@ class DatabaseManager:
     def get_patrimonio_dashboard_metrics(self) -> Dict[str, Any]:
         try:
             columns = set(self.get_table_columns("patrimonios"))
-        except mysql.connector.Error:
+        except DatabaseError:
             columns = set()
 
         # Se existir valor_atual, priorizar, mas sempre caindo para valor_compra quando nulo
@@ -1509,7 +1493,7 @@ class DatabaseManager:
         payload = {k: v for k, v in data.items() if k in allowed and k != "id_manutencao"}
         if not payload:
             raise ValueError("Nenhuma coluna válida para manutenção.")
-        columns = ", ".join(f"`{key}`" for key in payload.keys())
+        columns = ", ".join(f'"{key}"' for key in payload.keys())
         placeholders = ", ".join(["%s"] * len(payload))
         sql = f"INSERT INTO manutencoes ({columns}) VALUES ({placeholders})"
         self._ensure_connection()
@@ -1518,7 +1502,7 @@ class DatabaseManager:
             cursor.execute(sql, tuple(payload.values()))
             self.connection.commit()
             return cursor.lastrowid
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1533,7 +1517,7 @@ class DatabaseManager:
         for key, value in data.items():
             if key not in allowed or key == "id_manutencao":
                 continue
-            updates.append(f"`{key}` = %s")
+            updates.append(f'"{key}" = %s')
             params.append(value)
         if not updates:
             return False
@@ -1573,7 +1557,7 @@ class DatabaseManager:
     ) -> List[Dict[str, Any]]:
         try:
             mov_columns = set(self.get_table_columns("movimentacoes"))
-        except mysql.connector.Error:
+        except DatabaseError:
             mov_columns = set()
 
         select_fields = [
@@ -1629,7 +1613,7 @@ class DatabaseManager:
             raise ValueError("Dados da movimentação não informados.")
         try:
             allowed = set(self.get_table_columns("movimentacoes"))
-        except mysql.connector.Error:
+        except DatabaseError:
             allowed = {
                 "id_patrimonio",
                 "id_usuario",
@@ -1642,7 +1626,7 @@ class DatabaseManager:
         payload = {k: v for k, v in data.items() if k in allowed and k != "id_movimentacao"}
         if not payload:
             raise ValueError("Nenhuma coluna válida para movimentação.")
-        columns = ", ".join(f"`{key}`" for key in payload.keys())
+        columns = ", ".join(f'"{key}"' for key in payload.keys())
         placeholders = ", ".join(["%s"] * len(payload))
         sql = f"INSERT INTO movimentacoes ({columns}) VALUES ({placeholders})"
         self._ensure_connection()
@@ -1651,7 +1635,7 @@ class DatabaseManager:
             cursor.execute(sql, tuple(payload.values()))
             self.connection.commit()
             return cursor.lastrowid
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1696,7 +1680,7 @@ class DatabaseManager:
         config = self._ANEXO_CONFIG[entidade]
         try:
             return self.get_table_columns(config["table"])
-        except mysql.connector.Error:
+        except DatabaseError:
             valores = [valor for valor in config["columns"].values() if valor]
             return valores
 
@@ -1710,7 +1694,7 @@ class DatabaseManager:
 
         def _alias(coluna: Optional[str], apelido: str) -> str:
             if coluna:
-                return f"a.`{coluna}` AS {apelido}"
+                return f'a."{coluna}" AS {apelido}'
             return f"NULL AS {apelido}"
 
         colunas = config["columns"]
@@ -1730,7 +1714,7 @@ class DatabaseManager:
 
         params: List[Any] = []
         if entidade_id is not None:
-            query_parts.append(f"WHERE a.`{colunas['entidade_id']}` = %s")
+            query_parts.append(f"WHERE a.\"{colunas['entidade_id']}\" = %s")
             params.append(entidade_id)
 
         order_by = config.get("order_by")
@@ -1780,7 +1764,7 @@ class DatabaseManager:
         if not payload:
             raise ValueError("Nenhuma coluna válida para anexo.")
 
-        columns = ", ".join(f"`{col}`" for col in payload.keys())
+        columns = ", ".join(f'"{col}"' for col in payload.keys())
         placeholders = ", ".join(["%s"] * len(payload))
         sql = f"INSERT INTO {config['table']} ({columns}) VALUES ({placeholders})"
 
@@ -1790,7 +1774,7 @@ class DatabaseManager:
             cursor.execute(sql, tuple(payload.values()))
             self.connection.commit()
             return cursor.lastrowid
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1799,7 +1783,7 @@ class DatabaseManager:
     def delete_anexo(self, entidade: str, anexo_id: int) -> bool:
         entidade_norm = self._normalize_anexo_entidade(entidade)
         config = self._ANEXO_CONFIG[entidade_norm]
-        sql = f"DELETE FROM {config['table']} WHERE `{config['pk']}` = %s"
+        sql = f"DELETE FROM {config['table']} WHERE \"{config['pk']}\" = %s"
         rows = self.execute_query(sql, (anexo_id,))
         return bool(rows)
 
@@ -1846,7 +1830,7 @@ class DatabaseManager:
         if "data_auditoria" not in payload:
             payload["data_auditoria"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        colunas_sql = ", ".join(f"`{col}`" for col in payload.keys())
+        colunas_sql = ", ".join(f'"{col}"' for col in payload.keys())
         placeholders = ", ".join(["%s"] * len(payload))
         sql = f"INSERT INTO auditorias ({colunas_sql}) VALUES ({placeholders})"
 
@@ -1856,7 +1840,7 @@ class DatabaseManager:
             cursor.execute(sql, tuple(payload.values()))
             self.connection.commit()
             return cursor.lastrowid
-        except mysql.connector.Error:
+        except DatabaseError:
             self.connection.rollback()
             raise
         finally:
@@ -1890,7 +1874,7 @@ class DatabaseManager:
                 valor = json.dumps(valor, ensure_ascii=False)
             if coluna == "data_auditoria" and isinstance(valor, datetime):
                 valor = valor.strftime("%Y-%m-%d %H:%M:%S")
-            updates.append(f"`{coluna}` = %s")
+            updates.append(f'"{coluna}" = %s')
             params.append(valor)
 
         if not updates:
@@ -1908,13 +1892,13 @@ class DatabaseManager:
                 aud.acao,
                 aud.tabela_afetada,
                 aud.id_registro_afetado,
-                JSON_UNQUOTE(JSON_EXTRACT(aud.detalhes_novos, '$.observacoes')) AS observacoes
+                aud.detalhes_novos #>> '{observacoes}' AS observacoes
             FROM auditorias aud
-            WHERE JSON_UNQUOTE(JSON_EXTRACT(aud.detalhes_novos, '$.status')) = 'agendado'
+            WHERE aud.detalhes_novos #>> '{status}' = 'agendado'
         """
         params: List[Any] = []
         if dias and dias > 0:
-            query += " AND aud.data_auditoria BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL %s DAY)"
+            query += " AND aud.data_auditoria BETWEEN CURRENT_DATE AND CURRENT_DATE + (%s * INTERVAL '1 day')"
             params.append(dias)
         query += " ORDER BY aud.data_auditoria ASC"
         return self.fetch_all(query, tuple(params) if params else None)

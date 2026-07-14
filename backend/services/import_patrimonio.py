@@ -533,7 +533,7 @@ class PatrimonioImporter(QObject):
         # Inserir no banco
         cursor = self.db_manager.connection.cursor()
         try:
-            columns = ", ".join(f"`{k}`" for k in dados.keys())
+            columns = ", ".join(f'"{k}"' for k in dados.keys())
             placeholders = ", ".join(["%s"] * len(dados))
             sql = f"INSERT INTO fornecedores ({columns}) VALUES ({placeholders})"
             cursor.execute(sql, tuple(dados.values()))
