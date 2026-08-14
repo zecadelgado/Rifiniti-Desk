@@ -37,7 +37,12 @@ def get_database_url() -> str:
     if not host or not user or not password:
         raise RuntimeError("Configure DATABASE_URL ou POSTGRES_HOST, POSTGRES_USER e POSTGRES_PASSWORD no .env.")
 
-    return f"postgresql://{quote(user)}:{quote(password)}@{host}:{port}/{database}?sslmode=require"
+    sslmode = os.getenv("POSTGRES_SSLMODE", "disable")
+
+    return (
+        f"postgresql://{quote(user)}:{quote(password)}@"
+        f"{host}:{port}/{database}?sslmode={sslmode}"
+    )
 
 
 def get_db_config(include_database: bool = True):
